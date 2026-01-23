@@ -120,7 +120,7 @@ def main(*args:list[str]) -> int:
             case "rtm":
                 result = RTM(args.year,args.month,refresh=args.refresh)
             case "dam":
-                result = DAY(args.year,args.month,refresh=args.refresh)
+                result = DAM(args.year,args.month,refresh=args.refresh)
             case "_":
                 raise ValueError(f"{args.dataset=} is invalid")
         # automatic format
