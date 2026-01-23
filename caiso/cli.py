@@ -4,6 +4,8 @@ import sys
 import argparse
 import pathlib
 import warnings
+import logging
+
 import pandas as pd
 # pylint: disable=unused-import
 from caiso.rtm import RTM
@@ -18,6 +20,8 @@ E_FAILED = 1
 E_SYNTAX = 2
 """Exit code for syntax error"""
 
+_logger = logging.getLogger(__file__)
+
 def main(*args:list[str]) -> int:
     """California ISO market data accessor main command line processor
 
@@ -30,6 +34,12 @@ def main(*args:list[str]) -> int:
     -------
 
       - `int`: return/exit code (see `E_*` codes)
+
+    Caveat
+    ------
+
+    - The `notz` convert timestamp to local time but does not account to
+      summer time (daylight savings time).
     """
     # pylint: disable=too-many-return-statements
     try:
@@ -45,14 +55,17 @@ def main(*args:list[str]) -> int:
             epilog="See https://www.eudoxys.com/caiso for documentation. ",
             )
         parser.add_argument("dataset",
-            choices=["rtm","dam","help"],
+            choices=["rtm","dam"],
             help="specify the market dataset")
         parser.add_argument("year",
             type=int,
             help="specify the year")
-        parser.add_argument("-m","--month",
+        parser.add_argument("-M","--month",
             type=int,
             help="specify the month")
+        parser.add_argument("--refresh",
+            action="store_true",
+            help="force refresh of local data cache")
 
         parser.add_argument("--debug",
             action="store_true",
@@ -60,7 +73,6 @@ def main(*args:list[str]) -> int:
             )
         parser.add_argument("-f","--format",
             choices={"table","csv"},
-            default="table",
             help="specify the output format",
             )
         parser.add_argument("--header",
@@ -71,6 +83,9 @@ def main(*args:list[str]) -> int:
             action="store_false",
             help="disable CSV index output",
             )
+        parser.add_argument("--notz",
+            action="store_true",
+            help="discard timezone information")
         parser.add_argument("-o","--output",
             type=pathlib.Path,
             default=None,
@@ -96,24 +111,34 @@ def main(*args:list[str]) -> int:
         else:
             warnings.showwarning = lambda *x:None
 
-        # handle help request
-        if args.dataset == "help":
-            print(__doc__)
-            return E_OK
+        # debug setting
+        if args.debug:
+            logging.basicConfig(level=logging.DEBUG)
 
         # get locale data
         match args.dataset:
             case "rtm":
-                result = RTM(args.year,args.month).resample("1h").mean()
+                result = RTM(args.year,args.month,refresh=args.refresh)
             case "dam":
-                result = DAY(args.year,args.month)
+                result = DAY(args.year,args.month,refresh=args.refresh)
             case "_":
                 raise ValueError(f"{args.dataset=} is invalid")
+        # automatic format
+        if args.format is None:
+            args.format = "csv" if str(args.output).endswith(".csv") else "table"
+
+        if args.notz:
+            result.index = result.index.tz_convert("US/Pacific").tz_localize(None)
 
         # print result using format
         match args.format:
             case "table":
-                print(result)
+                pd.options.display.width = None
+                pd.options.display.max_columns = None
+                pd.options.display.max_rows = None
+                print(result,
+                    file=open(args.output,"w") if args.output else sys.stdout,
+                    )
             case "csv":
                 result.to_csv(
                     args.output if args.output else sys.stdout,
@@ -129,11 +154,10 @@ def main(*args:list[str]) -> int:
     # pylint: disable=broad-exception-caught
     except Exception as err:
 
-        raise
         if hasattr(args,"debug") and getattr(args,"debug"):
-            raise
-
-        print(f"ERROR [caiso]: {err}")
+            _logger.exception(f"ERROR [caiso]: {err}")
+        else:
+            _logger.error(f"ERROR [caiso]: {err}")
         return E_FAILED
 
 if __name__ == '__main__':
@@ -142,4 +166,4 @@ if __name__ == '__main__':
     pd.options.display.max_columns = None
     pd.options.display.max_rows = None
     
-    main("rtm",2018,"-M=8","--debug")
+    main("rtm","2018","-M=08","--debug","--notz")

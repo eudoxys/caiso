@@ -54,10 +54,15 @@ class RTM(pd.DataFrame):
     CACHEDIR = None
     """Cache data folder"""
 
+    PRECISION = 2
+    """Data rounding precision"""
+
     def __init__(self,
         year:int,
         month:int|None=None,
+        freq:str|None="1h",
         raw:bool=False,
+        refresh:bool=False,
         ):
         """Construct a real-time market data frame
 
@@ -69,11 +74,13 @@ class RTM(pd.DataFrame):
           - `month`: month for which data is collected, default is entire year
 
           - `raw`: flag to return raw OASIS data instead of structured RTM data
+
+          - `refresh`: force refresh of local data cache
         """
         data = []
         for month in range(1,13) if month is None else [month]:
-            cache = Cache(package="oasis",version=0,path=["caiso","RTM",f"{year}_{month:02d}.csv"])
-            if cache.exists():
+            cache = Cache(package="oasis",version=0,path=["caiso","RTM",f"{year}_{month:02d}.csv.gz"])
+            if cache.exists() and not refresh:
                 try:
                     result = pd.read_csv(cache.pathname)
                     _logger.debug(f"{cache=} ok")
@@ -120,7 +127,11 @@ class RTM(pd.DataFrame):
                         else:
                             _logger.error(f"{url=} failed with HTML Error {req.status_code}")
                 result = pd.concat(result)
-                result.to_csv(cache.pathname,index=False,header=True)
+                result.to_csv(cache.pathname,
+                    index=False,
+                    header=True,
+                    compression="gzip" if cache.pathname.endswith(".gz") else None,
+                    )
                 _logger.debug(f"{cache=} updated")
             data.append(result)
 
@@ -150,8 +161,10 @@ class RTM(pd.DataFrame):
             data.set_index(["timestamp","market","zone","schedule"],inplace=True)
             data.sort_index(inplace=True)
             data = data.unstack(level=[1,2,3])
+            if isinstance(freq,str):
+                data = data.resample(freq).mean()
 
-        super().__init__(data)
+        super().__init__(data.round(self.PRECISION))
 
 if __name__ == "__main__":
 
@@ -161,6 +174,5 @@ if __name__ == "__main__":
     pd.options.display.width = None
 
     logging.basicConfig(level=logging.DEBUG)
-    result = RTM(2018,8,raw=False)
-    # result.index = result.index.tz_convert(-8*3600)
-    print(result.resample("1h").mean().round(2))
+    result = RTM(2018,8)
+    print(result)

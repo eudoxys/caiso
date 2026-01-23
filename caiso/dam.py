@@ -54,10 +54,14 @@ class DAM(pd.DataFrame):
     CACHEDIR = None
     """Cache data folder"""
 
+    PRECISION = 2
+    """Data rounding precision"""
+
     def __init__(self,
         year:int,
         month:int|None=None,
         raw:bool=False,
+        refresh:bool=False,
         ):
         """Construct a day-ahead market data frame
 
@@ -69,11 +73,13 @@ class DAM(pd.DataFrame):
           - `month`: month for which data is collected, default is entire year
 
           - `raw`: flag to return raw OASIS data instead of structured RTM data
+
+          - `refresh`: force refresh of local data cache
         """
         data = []
         for month in range(1,13) if month is None else [month]:
-            cache = Cache(package="oasis",version=0,path=["caiso","DAM",f"{year}_{month:02d}.csv"])
-            if cache.exists():
+            cache = Cache(package="oasis",version=0,path=["caiso","DAM",f"{year}_{month:02d}.csv.gz"])
+            if cache.exists() and not refresh:
                 try:
                     result = pd.read_csv(cache.pathname)
                     _logger.debug(f"{cache=} ok")
@@ -120,7 +126,11 @@ class DAM(pd.DataFrame):
                         else:
                             _logger.error(f"{url=} failed with HTML Error {req.status_code}")
                 result = pd.concat(result)
-                result.to_csv(cache.pathname,index=False,header=True)
+                result.to_csv(cache.pathname,
+                    index=False,
+                    header=True,
+                    compression="gzip" if cache.pathname.endswith(".gz") else None,
+                    )
                 _logger.debug(f"{cache=} updated")
             data.append(result)
 
@@ -151,7 +161,7 @@ class DAM(pd.DataFrame):
             data.sort_index(inplace=True)
             data = data.unstack(level=[1,2,3])
 
-        super().__init__(data)
+        super().__init__(data.round(self.PRECISION))
 
 if __name__ == "__main__":
 
