@@ -28,6 +28,11 @@ which outputs
     2018-08-31 23:00:00+00:00       1569.0   27788.52  9440.0  36020.65   0.00     414.0   11983.71  6231.0  19144.67       7.44  104.28     761.0   13815.23  3044.0  13279.85     394.0    1982.14  165.0  3491.85
 
     [744 rows x 19 columns]
+
+References
+----------
+
+  - https://developer.caiso.com/Artifacts/OASIS/Report-URLs-for-OASIS.docx
 """
 
 import datetime as dt
